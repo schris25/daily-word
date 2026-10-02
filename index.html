@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Daily Word</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top-bar">
+    <button id="help-button" class="icon-button" type="button" aria-label="How to play">?</button>
+    <div class="title">
+      <h1>Daily Word</h1>
+      <p id="subtitle"></p>
+    </div>
+    <button id="stats-button" class="icon-button" type="button" aria-label="Statistics">
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+        <rect x="3" y="12" width="4" height="9" rx="1"></rect>
+        <rect x="10" y="3" width="4" height="18" rx="1"></rect>
+        <rect x="17" y="8" width="4" height="13" rx="1"></rect>
+      </svg>
+    </button>
+  </header>
+
+  <main>
+    <div id="toast" role="status" aria-live="polite"></div>
+    <div id="board" aria-label="Your guesses"></div>
+    <div id="mode-bar"></div>
+  </main>
+
+  <div id="keyboard" aria-label="Keyboard"></div>
+
+  <dialog id="help-dialog">
+    <h2>How to play</h2>
+    <p>Guess the five-letter word in six tries. There is one new word every day.</p>
+    <p>After each guess the tiles change colour:</p>
+    <ul class="legend">
+      <li><span class="tile sample" data-state="correct">A</span> The letter is in the word and in the right place.</li>
+      <li><span class="tile sample" data-state="present">B</span> The letter is in the word but in a different place.</li>
+      <li><span class="tile sample" data-state="absent">C</span> The letter is not in the word.</li>
+    </ul>
+    <p>Finished today's word? Use <strong>Practice round</strong> to keep playing. Practice games do not count towards your statistics.</p>
+    <button class="primary" type="button" data-close>Play</button>
+  </dialog>
+
+  <dialog id="stats-dialog">
+    <h2>Statistics</h2>
+    <p id="result-line"></p>
+    <div class="stat-row">
+      <div><strong id="stat-played">0</strong><span>Played</span></div>
+      <div><strong id="stat-win-rate">0</strong><span>Win %</span></div>
+      <div><strong id="stat-streak">0</strong><span>Streak</span></div>
+      <div><strong id="stat-best">0</strong><span>Best streak</span></div>
+    </div>
+    <h3>Guesses needed</h3>
+    <div id="distribution"></div>
+    <p id="countdown-line">Next word in <strong id="countdown"></strong></p>
+    <div class="dialog-actions">
+      <button id="share-button" class="primary" type="button">Share result</button>
+      <button type="button" data-close>Close</button>
+    </div>
+  </dialog>
+
+  <script src="words.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
