@@ -453,6 +453,8 @@
     document.getElementById('next-level').textContent = `level ${levelOfDay(dayNumber() + 1)}, ${tomorrow.name.toLowerCase()}`;
     document.getElementById('share-button').hidden = state.status === 'playing';
     shareImage = null;
+    const fallback = document.getElementById('share-fallback');
+    if (fallback) fallback.hidden = true;
     if (state.status !== 'playing') prepareShareImage();
     updateCountdown();
     clearInterval(countdownTimer);
@@ -477,12 +479,22 @@
 
   let shareImage = null; // { blob: Promise<Blob>, file: File | null } for the finished game
 
+  // The message that travels with the picture (pictures cannot hold a link, so the link goes here).
   function shareCaption() {
-    const title = state.mode === 'daily'
-      ? `${GAME_NAME} #${state.day + 1} · Level ${state.level}/${LEVELS.length}`
-      : `${GAME_NAME} practice · Level ${state.level}/${LEVELS.length}`;
-    const score = state.status === 'won' ? state.guesses.length : 'X';
-    return `${title} · ${score}/${state.maxGuesses}\n${location.href.split(/[?#]/)[0]}`;
+    const link = location.href.split(/[?#]/)[0];
+    const puzzle = state.mode === 'daily'
+      ? `${GAME_NAME} #${state.day + 1} (level ${state.level} of ${LEVELS.length})`
+      : `a level ${state.level} ${GAME_NAME} practice word`;
+    if (state.status === 'won') return `I solved ${puzzle} in ${state.guesses.length}/${state.maxGuesses}. Can you beat that?\n${link}`;
+    if (state.status === 'lost') return `${puzzle.charAt(0).toUpperCase() + puzzle.slice(1)} beat me. Can you solve it?\n${link}`;
+    return `Play ${GAME_NAME}, the daily word puzzle that gets harder every day:\n${link}`;
+  }
+
+  function copyLink() {
+    const text = shareCaption();
+    navigator.clipboard.writeText(text)
+      .then(() => showToast('Link copied. Paste it next to your picture', 2600))
+      .catch(() => showToast('Could not copy. The link is ' + text.split('\n').pop(), 4000));
   }
 
   function roundedRect(ctx, x, y, w, h, r) {
@@ -610,39 +622,53 @@
     shareImage = prepared;
   }
 
+  // Phones and tablets get the system share menu; computers get the picture on the clipboard.
+  // (Some computer browsers also offer a share menu, but copying is what players expect there.)
+  const isTouchDevice = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+
   function share() {
     if (!shareImage) prepareShareImage();
     const { blob, file } = shareImage;
 
-    // Phones (and some computers): the system share menu with the picture attached.
-    if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+    if (isTouchDevice && file && navigator.canShare && navigator.canShare({ files: [file] })) {
       navigator.share({ files: [file], text: shareCaption() }).catch((error) => {
-        if (error.name !== 'AbortError') copyImage(blob);
+        if (error.name !== 'AbortError') showSharePreview(blob, 'Press and hold the picture below to save or share it.');
       });
       return;
     }
     copyImage(blob);
   }
 
-  // Computers: put the picture on the clipboard to paste into a chat, or save it if that is not allowed.
   function copyImage(blob) {
-    if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
-      navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
-        .then(() => showToast('Picture copied. Paste it into any chat', 2600))
-        .catch(() => saveImage(blob));
-    } else {
-      saveImage(blob);
+    const blocked = 'Your browser did not allow copying. Right-click the picture below and choose Copy Image.';
+    if (!window.ClipboardItem || !navigator.clipboard || !navigator.clipboard.write) {
+      showSharePreview(blob, blocked);
+      return;
     }
+    navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+      .then(() => showToast('Picture copied. Paste it, then add the link with Copy link', 3200))
+      .catch(() => showSharePreview(blob, blocked));
   }
 
-  function saveImage(blob) {
+  // Fallback when the picture cannot be shared or copied automatically: show it so the player can copy it by hand.
+  function showSharePreview(blob, message) {
     blob.then((b) => {
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(b);
-      link.download = 'guessit-result.png';
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
-      showToast('Picture saved to your downloads', 2600);
+      // Created here rather than in the page, so a cached older page still works with this script.
+      let fallback = document.getElementById('share-fallback');
+      if (!fallback) {
+        fallback = document.createElement('div');
+        fallback.id = 'share-fallback';
+        const text = document.createElement('p');
+        const image = document.createElement('img');
+        image.alt = 'Picture of your result';
+        fallback.append(text, image);
+        statsDialog.append(fallback);
+      }
+      const [text, image] = fallback.children;
+      if (image.src) URL.revokeObjectURL(image.src);
+      image.src = URL.createObjectURL(b);
+      text.textContent = message;
+      fallback.hidden = false;
     }, () => showToast('Could not create the picture'));
   }
 
@@ -659,6 +685,7 @@
   document.getElementById('help-button').addEventListener('click', () => helpDialog.showModal());
   document.getElementById('stats-button').addEventListener('click', openStats);
   document.getElementById('share-button').addEventListener('click', share);
+  document.getElementById('link-button').addEventListener('click', copyLink);
   statsDialog.addEventListener('close', () => clearInterval(countdownTimer));
 
   for (const dialog of [helpDialog, statsDialog]) {

@@ -206,7 +206,9 @@ main {
   color: var(--bg);
   font-weight: 700;
   font-size: 0.9rem;
-  white-space: nowrap;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  text-align: center;
   opacity: 0;
   pointer-events: none;
   transition: opacity 150ms;
@@ -325,3 +327,17 @@ dialog button.primary {
 }
 dialog button[hidden] { display: none; }
 #help-dialog button { width: 100%; }
+
+#share-fallback p { margin: 14px 0 8px; font-size: 0.85rem; color: var(--muted); }
+#share-fallback img { display: block; width: 100%; border-radius: 12px; }
+#share-fallback[hidden] { display: none; }
+
+dialog .text-button {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 8px;
+  border: 0;
+  color: var(--muted);
+  font-weight: 700;
+}
