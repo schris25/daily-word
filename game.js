@@ -452,6 +452,8 @@
     const tomorrow = LEVELS[levelOfDay(dayNumber() + 1) - 1];
     document.getElementById('next-level').textContent = `level ${levelOfDay(dayNumber() + 1)}, ${tomorrow.name.toLowerCase()}`;
     document.getElementById('share-button').hidden = state.status === 'playing';
+    shareImage = null;
+    if (state.status !== 'playing') prepareShareImage();
     updateCountdown();
     clearInterval(countdownTimer);
     countdownTimer = setInterval(updateCountdown, 1000);
@@ -467,25 +469,181 @@
       `${pad(Math.floor(seconds / 3600))}:${pad(Math.floor((seconds % 3600) / 60))}:${pad(seconds % 60)}`;
   }
 
-  function shareText() {
-    const squares = { correct: '🟩', present: '🟧', absent: '⬛' };
+  // The shared result is a picture of the coloured grid, without letters so it does not give the word away.
+  const IMAGE_SIZE = 1080;
+  const IMAGE_FONT = 'ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+  const IMAGE_COLOURS = { correct: '#14b8a6', present: '#f5843a', absent: '#4a4470' };
+  const PIP_COLOURS = ['#10b3a3', '#2fa4d4', '#4b84f5', '#6c5cff', '#9b4ff2', '#d24bc6', '#ff4f8b'];
+
+  let shareImage = null; // { blob: Promise<Blob>, file: File | null } for the finished game
+
+  function shareCaption() {
     const title = state.mode === 'daily'
       ? `${GAME_NAME} #${state.day + 1} · Level ${state.level}/${LEVELS.length}`
       : `${GAME_NAME} practice · Level ${state.level}/${LEVELS.length}`;
     const score = state.status === 'won' ? state.guesses.length : 'X';
-    const grid = state.guesses
-      .map((guess) => scoreGuess(guess, state.answer).map((result) => squares[result]).join(''))
-      .join('\n');
-    return `${title} · ${score}/${state.maxGuesses}\n${grid}\n${location.href.split('#')[0]}`;
+    return `${title} · ${score}/${state.maxGuesses}\n${location.href.split(/[?#]/)[0]}`;
   }
 
-  async function share() {
-    try {
-      await navigator.clipboard.writeText(shareText());
-      showToast('Result copied');
-    } catch {
-      showToast('Could not copy the result');
+  function roundedRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function drawResultImage() {
+    const S = IMAGE_SIZE;
+    const canvas = document.createElement('canvas');
+    canvas.width = S;
+    canvas.height = S;
+    const ctx = canvas.getContext('2d');
+    const level = LEVELS[state.level - 1];
+
+    // Background with a soft glow at the top
+    const bg = ctx.createLinearGradient(0, 0, 0, S);
+    bg.addColorStop(0, '#221a4a');
+    bg.addColorStop(1, '#120f24');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, S, S);
+    const glow = ctx.createRadialGradient(S / 2, 0, 0, S / 2, 0, S * 0.7);
+    glow.addColorStop(0, 'rgba(108, 71, 255, 0.35)');
+    glow.addColorStop(1, 'rgba(108, 71, 255, 0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, S, S);
+
+    // Logo: "Guess" followed by a tilted gradient "IT" badge
+    ctx.textBaseline = 'middle';
+    ctx.font = `800 92px ${IMAGE_FONT}`;
+    const guessWidth = ctx.measureText('Guess').width;
+    const itWidth = ctx.measureText('IT').width + 36;
+    const logoX = (S - guessWidth - 14 - itWidth) / 2;
+    const logoY = 110;
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'left';
+    ctx.fillText('Guess', logoX, logoY);
+    ctx.save();
+    ctx.translate(logoX + guessWidth + 14 + itWidth / 2, logoY);
+    ctx.rotate(-4 * Math.PI / 180);
+    const badge = ctx.createLinearGradient(-itWidth / 2, -50, itWidth / 2, 50);
+    badge.addColorStop(0, '#6c47ff');
+    badge.addColorStop(1, '#ff4f8b');
+    ctx.fillStyle = badge;
+    roundedRect(ctx, -itWidth / 2, -54, itWidth, 108, 26);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.fillText('IT', 0, 4);
+    ctx.restore();
+
+    // Puzzle and level
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#a49dc6';
+    ctx.font = `700 38px ${IMAGE_FONT}`;
+    ctx.fillText(state.mode === 'daily' ? `#${state.day + 1} · ${level.day}` : 'Practice round', S / 2, 205);
+
+    ctx.font = `800 34px ${IMAGE_FONT}`;
+    const levelText = `Level ${state.level} · ${level.name}`;
+    const pipW = 30, pipH = 14, pipGap = 7;
+    const pipsWidth = LEVELS.length * pipW + (LEVELS.length - 1) * pipGap;
+    const levelWidth = pipsWidth + 20 + ctx.measureText(levelText).width;
+    let x = (S - levelWidth) / 2;
+    for (let i = 0; i < LEVELS.length; i++) {
+      ctx.fillStyle = i < state.level ? PIP_COLOURS[i] : '#3a3462';
+      roundedRect(ctx, x, 262 - pipH / 2, pipW, pipH, 7);
+      ctx.fill();
+      x += pipW + pipGap;
     }
+    ctx.fillStyle = '#f3f0ff';
+    ctx.textAlign = 'left';
+    ctx.fillText(levelText, x + 20 - pipGap, 264);
+
+    // The coloured grid, one row per guess
+    const gridTop = 320, gridBottom = 860, gap = 14;
+    const rowCount = state.guesses.length;
+    const tile = Math.min(110, (gridBottom - gridTop - gap * (rowCount - 1)) / rowCount);
+    const gridWidth = WORD_LENGTH * tile + (WORD_LENGTH - 1) * gap;
+    const gridHeight = rowCount * tile + (rowCount - 1) * gap;
+    const startX = (S - gridWidth) / 2;
+    const startY = gridTop + (gridBottom - gridTop - gridHeight) / 2;
+    state.guesses.forEach((guess, r) => {
+      scoreGuess(guess, state.answer).forEach((result, c) => {
+        const tx = startX + c * (tile + gap);
+        const ty = startY + r * (tile + gap);
+        ctx.fillStyle = IMAGE_COLOURS[result];
+        roundedRect(ctx, tx, ty, tile, tile, tile * 0.2);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.18)';
+        roundedRect(ctx, tx, ty + tile - tile * 0.2, tile, tile * 0.2, tile * 0.1);
+        ctx.save();
+        roundedRect(ctx, tx, ty, tile, tile, tile * 0.2);
+        ctx.clip();
+        ctx.fillRect(tx, ty + tile - 7, tile, 7);
+        ctx.restore();
+      });
+    });
+
+    // Score and link
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `800 56px ${IMAGE_FONT}`;
+    ctx.fillText(state.status === 'won'
+      ? `Solved in ${state.guesses.length}/${state.maxGuesses}`
+      : `X/${state.maxGuesses} · Not this time`, S / 2, 935);
+    ctx.fillStyle = '#a49dc6';
+    ctx.font = `700 30px ${IMAGE_FONT}`;
+    ctx.fillText(location.host + location.pathname.replace(/index\.html$/, '').replace(/\/$/, ''), S / 2, 1010);
+
+    return canvas;
+  }
+
+  // Draw the picture as soon as the game ends, so the Share button can use it straight away
+  // (phones only open the share menu if it happens immediately after the tap).
+  function prepareShareImage() {
+    const canvas = drawResultImage();
+    const blob = new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('No image'))), 'image/png'));
+    const prepared = { blob, file: null };
+    blob.then((b) => { prepared.file = new File([b], 'guessit-result.png', { type: 'image/png' }); }, () => {});
+    shareImage = prepared;
+  }
+
+  function share() {
+    if (!shareImage) prepareShareImage();
+    const { blob, file } = shareImage;
+
+    // Phones (and some computers): the system share menu with the picture attached.
+    if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+      navigator.share({ files: [file], text: shareCaption() }).catch((error) => {
+        if (error.name !== 'AbortError') copyImage(blob);
+      });
+      return;
+    }
+    copyImage(blob);
+  }
+
+  // Computers: put the picture on the clipboard to paste into a chat, or save it if that is not allowed.
+  function copyImage(blob) {
+    if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+      navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+        .then(() => showToast('Picture copied. Paste it into any chat', 2600))
+        .catch(() => saveImage(blob));
+    } else {
+      saveImage(blob);
+    }
+  }
+
+  function saveImage(blob) {
+    blob.then((b) => {
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(b);
+      link.download = 'guessit-result.png';
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+      showToast('Picture saved to your downloads', 2600);
+    }, () => showToast('Could not create the picture'));
   }
 
   // ---- Wiring ---------------------------------------------------------------------
