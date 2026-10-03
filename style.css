@@ -60,9 +60,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
 /* Header */
 
 .top-bar {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: space-between;
   width: 100%;
   max-width: 500px;
   margin: 0 auto;
@@ -341,3 +341,151 @@ dialog .text-button {
   color: var(--muted);
   font-weight: 700;
 }
+
+/* Header button groups */
+
+.bar-side { display: flex; gap: 8px; }
+.bar-side.end { justify-content: flex-end; }
+
+/* Past puzzles (calendar) */
+
+.lv1 { --lv: #10b3a3; }
+.lv2 { --lv: #2fa4d4; }
+.lv3 { --lv: #4b84f5; }
+.lv4 { --lv: #6c5cff; }
+.lv5 { --lv: #9b4ff2; }
+.lv6 { --lv: #d24bc6; }
+.lv7 { --lv: #ff4f8b; }
+
+body.archive-open { overflow: hidden; }
+
+#archive {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  overflow-y: auto;
+  background: radial-gradient(ellipse 80% 45% at 50% 0%, var(--bg-glow), transparent 70%), var(--bg);
+}
+#archive[hidden] { display: none; }
+
+.archive-inner {
+  max-width: 500px;
+  margin: 0 auto;
+  padding: 12px 16px 28px;
+}
+
+.archive-top {
+  display: grid;
+  grid-template-columns: 38px 1fr 38px;
+  align-items: center;
+}
+.archive-top h2 { margin: 0; text-align: center; font-size: 1.3rem; font-weight: 800; }
+.icon-button svg path { fill: currentColor; }
+
+#archive-summary {
+  margin: 8px 0 16px;
+  text-align: center;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.month-bar {
+  display: grid;
+  grid-template-columns: 38px 1fr 38px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.month-bar h3 { margin: 0; text-align: center; font-size: 1.05rem; font-weight: 800; }
+.month-bar .icon-button { font-size: 1.4rem; line-height: 1; }
+.month-bar .icon-button:disabled { opacity: 0.3; cursor: default; }
+
+#calendar {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+
+.weekday {
+  padding-bottom: 6px;
+  border-bottom: 4px solid var(--lv);
+  border-radius: 0 0 2px 2px;
+  text-align: center;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.cal-day {
+  position: relative;
+  aspect-ratio: 1 / 1.1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 0 0 4px;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 2px 0 var(--shadow);
+  font-weight: 800;
+  overflow: hidden;
+}
+/* Level colour along the bottom of each day */
+.cal-day::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: var(--lv);
+}
+.cal-date { font-size: 1rem; }
+.cal-mark { min-height: 0.9em; font-size: 0.68rem; line-height: 1; }
+
+.cal-day.won { background: var(--correct); color: #ffffff; }
+.cal-day.lost { background: var(--absent); color: #ffffff; }
+.cal-day.playing { border-color: var(--present); }
+.cal-day.playing .cal-mark { color: var(--present); letter-spacing: 1px; }
+.cal-day.today { border-color: var(--brand); }
+.cal-day.today.playing { border-color: var(--brand); }
+.cal-day.current { outline: 3px solid var(--brand-2); outline-offset: 2px; }
+.cal-day:hover:not(.locked) { transform: translateY(-1px); }
+
+.cal-day.locked {
+  background: transparent;
+  box-shadow: none;
+  color: var(--muted);
+  opacity: 0.35;
+}
+.cal-day.locked::after { display: none; }
+
+.calendar-key {
+  list-style: none;
+  margin: 20px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.calendar-key li { display: flex; align-items: center; gap: 8px; }
+.key-swatch {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border: 2px solid transparent;
+  border-radius: 5px;
+  background: var(--surface);
+}
+.key-swatch.won { background: var(--correct); }
+.key-swatch.lost { background: var(--absent); }
+.key-swatch.playing { border-color: var(--present); }
+.key-swatch.new { border-color: var(--tile-border); }
+.cal-day.new:not(.today) { border-color: var(--tile-border); }
+
+.archive-note { margin: 16px 0 0; font-size: 0.8rem; line-height: 1.45; color: var(--muted); }

@@ -17,22 +17,31 @@
   <meta property="og:image:alt" content="GuessIT logo with a grid of coloured letter tiles">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%236c47ff'/%3E%3Cstop offset='1' stop-color='%23ff4f8b'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='16' fill='url(%23g)'/%3E%3Ctext x='32' y='45' font-family='Arial,sans-serif' font-size='36' font-weight='800' fill='white' text-anchor='middle'%3EG%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="style.css?v=5">
+  <link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
   <header class="top-bar">
-    <button id="help-button" class="icon-button" type="button" aria-label="How to play">?</button>
+    <div class="bar-side">
+      <button id="help-button" class="icon-button" type="button" aria-label="How to play">?</button>
+    </div>
     <div class="title">
       <h1 class="logo">Guess<span>IT</span></h1>
       <p id="subtitle"></p>
     </div>
-    <button id="stats-button" class="icon-button" type="button" aria-label="Statistics">
-      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-        <rect x="3" y="12" width="4" height="9" rx="1.5"></rect>
-        <rect x="10" y="3" width="4" height="18" rx="1.5"></rect>
-        <rect x="17" y="8" width="4" height="13" rx="1.5"></rect>
-      </svg>
-    </button>
+    <div class="bar-side end">
+      <button id="archive-button" class="icon-button" type="button" aria-label="Past puzzles">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+          <path d="M7 2a1 1 0 0 1 1 1v1h8V3a1 1 0 1 1 2 0v1h1a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3h1V3a1 1 0 0 1 1-1Zm13 8H4v9a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-9ZM7.5 12h2v2h-2v-2Zm3.5 0h2v2h-2v-2Zm3.5 0h2v2h-2v-2Zm-7 3.5h2v2h-2v-2Zm3.5 0h2v2h-2v-2Z"></path>
+        </svg>
+      </button>
+      <button id="stats-button" class="icon-button" type="button" aria-label="Statistics">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+          <rect x="3" y="12" width="4" height="9" rx="1.5"></rect>
+          <rect x="10" y="3" width="4" height="18" rx="1.5"></rect>
+          <rect x="17" y="8" width="4" height="13" rx="1.5"></rect>
+        </svg>
+      </button>
+    </div>
   </header>
 
   <main>
@@ -43,6 +52,32 @@
   </main>
 
   <div id="keyboard" aria-label="Keyboard"></div>
+
+  <section id="archive" hidden aria-labelledby="archive-title">
+    <div class="archive-inner">
+      <div class="archive-top">
+        <button id="archive-back" class="icon-button" type="button" aria-label="Back to the game">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M15.7 4.3a1 1 0 0 1 0 1.4L9.4 12l6.3 6.3a1 1 0 1 1-1.4 1.4l-7-7a1 1 0 0 1 0-1.4l7-7a1 1 0 0 1 1.4 0Z"></path></svg>
+        </button>
+        <h2 id="archive-title">Past puzzles</h2>
+        <span class="icon-space"></span>
+      </div>
+      <p id="archive-summary"></p>
+      <div class="month-bar">
+        <button id="month-prev" class="icon-button" type="button" aria-label="Previous month">‹</button>
+        <h3 id="month-label"></h3>
+        <button id="month-next" class="icon-button" type="button" aria-label="Next month">›</button>
+      </div>
+      <div id="calendar"></div>
+      <ul class="calendar-key">
+        <li><span class="key-swatch won"></span>Solved, with guesses used</li>
+        <li><span class="key-swatch lost"></span>Missed</li>
+        <li><span class="key-swatch playing"></span>Started</li>
+        <li><span class="key-swatch new"></span>Not played yet</li>
+      </ul>
+      <p class="archive-note">The coloured bars show each weekday's level, from Monday (easy) to Sunday (brutal). Past puzzles do not change your streak or statistics.</p>
+    </div>
+  </section>
 
   <dialog id="help-dialog">
     <h2>How to play</h2>
@@ -59,7 +94,8 @@
       <li><strong>Monday</strong> You get a 7th guess.</li>
       <li><strong>Sunday</strong> Hard rules: letters you have found must be used in every later guess.</li>
     </ul>
-    <p>Want more? A <strong>Practice round</strong> gives a random word at a random level and does not count towards your statistics.</p>
+    <p>Missed a day? Open <strong>Past puzzles</strong> (the calendar button) to play any earlier puzzle.</p>
+    <p>Want more? A <strong>Practice round</strong> gives a random word at a random level. Past puzzles and practice rounds do not count towards your statistics.</p>
     <button class="primary" type="button" data-close>Play</button>
   </dialog>
 
@@ -82,7 +118,7 @@
     <button class="text-button" type="button" data-close>Close</button>
   </dialog>
 
-  <script src="words.js?v=5"></script>
-  <script src="game.js?v=5"></script>
+  <script src="words.js?v=6"></script>
+  <script src="game.js?v=6"></script>
 </body>
 </html>

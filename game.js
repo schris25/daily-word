@@ -54,6 +54,27 @@
     },
   };
 
+  // Guesses for every puzzle played, by day number: { [day]: { answer, guesses } }.
+  function loadProgress() {
+    const progress = store.get('progress', null);
+    if (progress) return progress;
+    // Older versions saved only today's puzzle.
+    const saved = store.get('daily', null);
+    return saved && saved.answer ? { [saved.day]: { answer: saved.answer, guesses: saved.guesses } } : {};
+  }
+
+  function saveProgress(day, answer, guesses) {
+    const progress = loadProgress();
+    progress[day] = { answer, guesses };
+    store.set('progress', progress);
+  }
+
+  // A saved game only counts if it was played against the word that day has now.
+  function savedGuesses(day, progress = loadProgress()) {
+    const saved = progress[day];
+    return saved && saved.answer === answerForDay(day) ? saved.guesses : [];
+  }
+
   function loadStats() {
     const stats = store.get('stats', null) || {
       played: 0, wins: 0, streak: 0, best: 0, lastWinDay: null, lastPlayedDay: null, distribution: [],
@@ -138,15 +159,13 @@
     return { mode, day, level, answer, maxGuesses, guesses, current: '', status: statusOf(guesses, answer, maxGuesses) };
   }
 
-  function startDaily() {
-    const day = dayNumber();
+  // Play the puzzle of any day from #1 to today. Only today's result counts towards the statistics.
+  function startDay(day) {
+    const today = dayNumber();
     const answer = answerForDay(day);
-    const saved = store.get('daily', null);
-    let guesses = [];
-    if (saved && saved.day === day) {
-      if (saved.answer === answer) {
-        guesses = saved.guesses;
-      } else if (saved.guesses.length) {
+    if (day === today) {
+      const legacy = store.get('daily', null);
+      if (legacy && legacy.day === day && legacy.answer !== answer && legacy.guesses.length) {
         // Progress from before the word lists changed: today's word is now different,
         // so start again but do not count today in the statistics twice.
         const stats = loadStats();
@@ -154,9 +173,14 @@
         store.set('stats', stats);
       }
     }
-    state = newState('daily', day, levelOfDay(day), answer, guesses);
+    state = newState('daily', day, levelOfDay(day), answer, savedGuesses(day));
+    state.isToday = day === today;
     buildBoard();
     render();
+  }
+
+  function startDaily() {
+    startDay(dayNumber());
   }
 
   function startPractice() {
@@ -216,8 +240,8 @@
     state.current = '';
     state.status = statusOf(state.guesses, state.answer, state.maxGuesses);
     if (state.mode === 'daily') {
-      store.set('daily', { day: state.day, answer: state.answer, guesses: state.guesses });
-      if (state.status !== 'playing') recordDailyResult();
+      saveProgress(state.day, state.answer, state.guesses);
+      if (state.status !== 'playing' && state.isToday) recordDailyResult();
     }
 
     busy = true;
@@ -346,13 +370,17 @@
 
     // Header, difficulty and mode buttons
     const level = LEVELS[state.level - 1];
-    subtitle.textContent = state.mode === 'daily' ? `#${state.day + 1} · ${level.day}` : 'Practice round';
+    if (state.mode === 'practice') subtitle.textContent = 'Practice round';
+    else if (state.isToday) subtitle.textContent = `#${state.day + 1} · ${level.day}`;
+    else subtitle.textContent = `#${state.day + 1} · ${formatDate(state.day, { weekday: 'short', day: 'numeric', month: 'short' })}`;
     renderLevelBar(level);
     modeBar.replaceChildren();
-    if (state.mode === 'daily') {
-      modeBar.append(modeButton('Practice round', startPractice));
-    } else {
+    if (state.mode === 'practice') {
       modeBar.append(modeButton('New word', startPractice), modeButton("Back to today's puzzle", startDaily));
+    } else if (state.isToday) {
+      modeBar.append(modeButton('Practice round', startPractice), modeButton('Past puzzles', openArchive));
+    } else {
+      modeBar.append(modeButton('Past puzzles', openArchive), modeButton("Back to today's puzzle", startDaily));
     }
   }
 
@@ -423,7 +451,7 @@
     document.getElementById('stat-best').textContent = stats.best;
 
     const resultLine = document.getElementById('result-line');
-    const label = state.mode === 'daily' ? "today's word" : 'the practice word';
+    const label = state.mode === 'practice' ? 'the practice word' : state.isToday ? "today's word" : `puzzle #${state.day + 1}`;
     if (state.status === 'won') {
       const n = state.guesses.length;
       resultLine.textContent = `You solved ${label} (level ${state.level}) in ${n} ${n === 1 ? 'guess' : 'guesses'}.`;
@@ -435,7 +463,7 @@
 
     const distribution = document.getElementById('distribution');
     const max = Math.max(1, ...stats.distribution);
-    const highlight = state.mode === 'daily' && state.status === 'won' ? state.guesses.length - 1 : -1;
+    const highlight = state.isToday && state.status === 'won' ? state.guesses.length - 1 : -1;
     distribution.replaceChildren(...stats.distribution.map((count, i) => {
       const row = document.createElement('div');
       row.className = 'dist-row';
@@ -672,17 +700,150 @@
     }, () => showToast('Could not create the picture'));
   }
 
+  // ---- Past puzzles (calendar) ------------------------------------------------------
+
+  const archive = document.getElementById('archive');
+  const calendar = document.getElementById('calendar');
+  let shownMonth; // { year, month } of the calendar page on screen
+
+  function dateOfDay(day) {
+    return new Date(FIRST_DAY + day * 86400000);
+  }
+
+  function formatDate(day, options) {
+    return dateOfDay(day).toLocaleDateString(undefined, { ...options, timeZone: 'UTC' });
+  }
+
+  function openArchive() {
+    const date = dateOfDay(state.mode === 'daily' ? state.day : dayNumber());
+    shownMonth = { year: date.getUTCFullYear(), month: date.getUTCMonth() };
+    renderArchive();
+    archive.hidden = false;
+    document.body.classList.add('archive-open');
+    archive.scrollTop = 0;
+    document.getElementById('archive-back').focus();
+    // So the phone's back gesture closes the calendar instead of leaving the game.
+    if (location.hash !== '#archive') history.pushState(null, '', '#archive');
+  }
+
+  // Closing goes "back" in the browser history, which removes #archive and triggers popstate below.
+  function closeArchive() {
+    if (archive.hidden) return;
+    if (location.hash === '#archive') history.back();
+    else hideArchive();
+  }
+
+  function hideArchive() {
+    archive.hidden = true;
+    document.body.classList.remove('archive-open');
+  }
+
+  function changeMonth(step) {
+    const next = new Date(Date.UTC(shownMonth.year, shownMonth.month + step, 1));
+    shownMonth = { year: next.getUTCFullYear(), month: next.getUTCMonth() };
+    renderArchive();
+  }
+
+  function renderArchive() {
+    const today = dayNumber();
+    const progress = loadProgress();
+    const resultOf = (day) => {
+      const guesses = savedGuesses(day, progress);
+      if (!guesses.length) return { status: 'new', guesses };
+      return { status: statusOf(guesses, answerForDay(day), LEVELS[levelOfDay(day) - 1].guesses), guesses };
+    };
+
+    // Summary across every puzzle so far
+    let solved = 0, missed = 0;
+    for (let day = 0; day <= today; day++) {
+      const { status } = resultOf(day);
+      if (status === 'won') solved++;
+      if (status === 'lost') missed++;
+    }
+    const total = today + 1;
+    document.getElementById('archive-summary').textContent =
+      `${total} ${total === 1 ? 'puzzle' : 'puzzles'} so far · ${solved} solved · ${missed} missed`;
+
+    // Month heading and arrows (from the month of puzzle #1 to this month)
+    const first = dateOfDay(0), last = dateOfDay(today);
+    const monthIndex = (y, m) => y * 12 + m;
+    const shown = monthIndex(shownMonth.year, shownMonth.month);
+    document.getElementById('month-label').textContent =
+      new Date(Date.UTC(shownMonth.year, shownMonth.month, 1)).toLocaleDateString(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' });
+    document.getElementById('month-prev').disabled = shown <= monthIndex(first.getUTCFullYear(), first.getUTCMonth());
+    document.getElementById('month-next').disabled = shown >= monthIndex(last.getUTCFullYear(), last.getUTCMonth());
+
+    // Weekday headings, each with its level colour (Monday = level 1 ... Sunday = level 7)
+    const cells = LEVELS.map((level, i) => {
+      const head = document.createElement('div');
+      head.className = `weekday lv${i + 1}`;
+      head.textContent = level.day.slice(0, 1);
+      head.title = `${level.day}: level ${i + 1}, ${level.name}`;
+      return head;
+    });
+
+    // Blank cells before the 1st, so the 1st lands under its weekday
+    const firstOfMonth = new Date(Date.UTC(shownMonth.year, shownMonth.month, 1));
+    const offset = (firstOfMonth.getUTCDay() + 6) % 7;
+    for (let i = 0; i < offset; i++) cells.push(document.createElement('div'));
+
+    const daysInMonth = new Date(Date.UTC(shownMonth.year, shownMonth.month + 1, 0)).getUTCDate();
+    for (let date = 1; date <= daysInMonth; date++) {
+      const day = Math.round((Date.UTC(shownMonth.year, shownMonth.month, date) - FIRST_DAY) / 86400000);
+      if (day < 0 || day > today) {
+        const locked = document.createElement('div');
+        locked.className = 'cal-day locked';
+        locked.textContent = date;
+        locked.setAttribute('aria-hidden', 'true');
+        cells.push(locked);
+        continue;
+      }
+      const level = levelOfDay(day);
+      const { status, guesses } = resultOf(day);
+      const cell = document.createElement('button');
+      cell.type = 'button';
+      cell.className = `cal-day lv${level} ${status}` + (day === today ? ' today' : '') +
+        (state.mode === 'daily' && state.day === day ? ' current' : '');
+      const number = document.createElement('span');
+      number.className = 'cal-date';
+      number.textContent = date;
+      const mark = document.createElement('span');
+      mark.className = 'cal-mark';
+      mark.textContent = status === 'won' ? `${guesses.length}/${LEVELS[level - 1].guesses}`
+        : status === 'lost' ? '✗' : status === 'playing' ? '•••' : '';
+      cell.append(number, mark);
+      const what = { won: `solved in ${guesses.length}`, lost: 'missed', playing: 'started', new: 'not played' }[status];
+      cell.setAttribute('aria-label',
+        `Puzzle ${day + 1}, ${formatDate(day, { weekday: 'long', day: 'numeric', month: 'long' })}, level ${level}, ${what}${day === today ? ', today' : ''}`);
+      cell.addEventListener('click', () => {
+        startDay(day);
+        closeArchive();
+      });
+      cells.push(cell);
+    }
+    calendar.replaceChildren(...cells);
+  }
+
   // ---- Wiring ---------------------------------------------------------------------
 
   document.addEventListener('keydown', (event) => {
     if (event.ctrlKey || event.metaKey || event.altKey) return;
-    if (helpDialog.open || statsDialog.open) return;
+    if (helpDialog.open || statsDialog.open || !archive.hidden) return;
     if (event.key === 'Enter') press('enter');
     else if (event.key === 'Backspace') press('back');
     else if (/^[a-zA-Z]$/.test(event.key)) press(event.key.toLowerCase());
   });
 
   document.getElementById('help-button').addEventListener('click', () => helpDialog.showModal());
+  document.getElementById('archive-button').addEventListener('click', () => { if (!busy) openArchive(); });
+  document.getElementById('archive-back').addEventListener('click', closeArchive);
+  document.getElementById('month-prev').addEventListener('click', () => changeMonth(-1));
+  document.getElementById('month-next').addEventListener('click', () => changeMonth(1));
+  window.addEventListener('popstate', () => {
+    if (location.hash === '#archive') { renderArchive(); archive.hidden = false; document.body.classList.add('archive-open'); }
+    else hideArchive();
+  });
+  archive.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeArchive(); });
   document.getElementById('stats-button').addEventListener('click', openStats);
   document.getElementById('share-button').addEventListener('click', share);
   document.getElementById('link-button').addEventListener('click', copyLink);
@@ -698,11 +859,15 @@
 
   // Load a new daily puzzle if the page was left open past midnight.
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && !busy && state.mode === 'daily' && state.day !== dayNumber()) startDaily();
+    if (!document.hidden && !busy && state.isToday && state.day !== dayNumber()) startDaily();
   });
 
   buildKeyboard();
   startDaily();
+  if (location.hash === '#archive') {
+    history.replaceState(null, '', location.pathname + location.search);
+    openArchive();
+  }
 
   // Show the rules to new players, and once more to returning players since the rules changed.
   if (!store.get('seen-help-v2', false)) {
